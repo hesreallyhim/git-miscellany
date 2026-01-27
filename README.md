@@ -15,9 +15,13 @@ Not rigorously tested, YMMV, use at your own risk. Mostly using zsh v5.9 on macO
 
 ## Functions
 
-### `git_scan_hidden.zsh`
+### `git_scan_hidden`
 
 Search for any "invisible" characters that may be lurking in some code. Can search by PR number, URL, commit SHA, etc. 
+
+### `gb_safe`
+
+Check if a branch is fully contained in a target branch (i.e., safe to delete locally - all changes already included). Useful if you've done a rebase or squash and the graph is not obviously linear.
 
 ---
 
