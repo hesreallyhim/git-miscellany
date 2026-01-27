@@ -1,0 +1,40 @@
+#compdef git_scan_hidden
+
+local -a modes
+modes=(
+  'file:scan a local file'
+  'url:scan a URL (raw file, .diff, .patch)'
+  'gh-blob:scan a GitHub raw file at a commit sha'
+  'pr-diff:scan a GitHub PR .diff'
+  'commit-diff:scan a GitHub commit .diff'
+)
+
+_arguments -C \
+  '1:mode:->mode' \
+  '*::arg:->args'
+
+case "$state" in
+  mode)
+    _describe -t modes 'mode' modes
+    return
+    ;;
+  args)
+    case "$words[2]" in
+      file)
+        _files
+        ;;
+      url)
+        _message 'raw URL (.diff/.patch/raw file)'
+        ;;
+      gh-blob)
+        _message 'args: owner/repo sha path/in/repo'
+        ;;
+      pr-diff)
+        _message 'args: owner/repo pr_number'
+        ;;
+      commit-diff)
+        _message 'args: owner/repo sha'
+        ;;
+    esac
+    ;;
+esac
