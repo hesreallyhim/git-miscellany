@@ -32,6 +32,19 @@ I basically use this every time I start a new repo - in two seconds, I've set up
 
 Search for any "invisible" characters that may be lurking in some code. Can search by PR number, URL, commit SHA, etc. 
 
+
+## Hooks
+
+### pre-commit
+
+#### `pre-commit.notebook`
+
+This can be useful when working with Jupyter notebooks, especially authoring notebooks. Basically it "scrubs" the notebooks clean before they are committed (removes/resets outputs, etc.), so that the committed notebook is in a pristine state.  
+
+#### `pre-push.notebook`
+
+This also runs `nb-clean check` on any notebooks in the directory you're working in to make sure that all notebooks are scrubbed all sparkling clean before being published.
+
 ---
 
 Excluding imagery, all content is licensed:

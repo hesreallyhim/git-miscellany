@@ -1,0 +1,103 @@
+#!/usr/bin/env zsh
+# Pre-commit hook: scrub staged Jupyter notebooks with nb-clean and re-stage them.
+#
+# - Operates only on notebooks that are currently staged (A/C/M/R).
+# - Re-stages cleaned notebooks before the commit proceeds.
+# - Set SKIP_NOTEBOOK_PRECOMMIT=1 to bypass for a single commit.
+#
+# Config (optional env overrides):
+#   NOTEBOOK_PATH=notebooks        # default: notebooks (matches Makefile)
+#   NB_CLEAN="uvx nb-clean"        # default: auto-detected (matches Makefile)
+
+set -euo pipefail
+
+SKIP_VAR="SKIP_NOTEBOOK_PRECOMMIT"
+NOTEBOOK_PATH="${NOTEBOOK_PATH:-notebooks}"
+
+die() {
+  print -u2 -- "pre-commit: $*"
+  exit 1
+}
+
+info() {
+  print -- "pre-commit: $*"
+}
+
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || die "not in a git repository"
+cd "$ROOT" || die "failed to cd to repo root"
+
+# zsh indirect parameter expansion: ${(P)name}
+if [[ "${(P)SKIP_VAR:-}" == "1" ]]; then
+  info "skipping notebook clean/check because $SKIP_VAR=1"
+  exit 0
+fi
+
+# Resolve NB_CLEAN like your Makefile:
+# - uvx nb-clean
+# - pipx run nb-clean
+# - nb-clean
+NB_CLEAN_CMD="${NB_CLEAN:-}"
+if [[ -z "$NB_CLEAN_CMD" ]]; then
+  if command -v uvx >/dev/null 2>&1; then
+    NB_CLEAN_CMD="uvx nb-clean"
+  elif command -v pipx >/dev/null 2>&1; then
+    NB_CLEAN_CMD="pipx run nb-clean"
+  else
+    NB_CLEAN_CMD="nb-clean"
+  fi
+fi
+
+# If NB_CLEAN is a simple executable name, ensure it exists.
+# If it contains spaces (e.g., "uvx nb-clean"), we'll just attempt to run it.
+if [[ "$NB_CLEAN_CMD" != *" "* ]]; then
+  command -v "$NB_CLEAN_CMD" >/dev/null 2>&1 || die "nb-clean not found (set NB_CLEAN to override)"
+fi
+
+typeset -a staged_notebooks
+staged_notebooks=()
+
+# NUL-delimited staged paths (safe for odd characters).
+while IFS= read -r -d '' path; do
+  case "$path" in
+    (*.ipynb)
+      # If NOTEBOOK_PATH exists as a directory, optionally scope to it.
+      # Keep notebooks outside NOTEBOOK_PATH too (don’t silently ignore).
+      if [[ -d "$NOTEBOOK_PATH" ]]; then
+        case "$path" in
+          ("$NOTEBOOK_PATH"/*) staged_notebooks+=("$path") ;;
+          (*) staged_notebooks+=("$path") ;;
+        esac
+      else
+        staged_notebooks+=("$path")
+      fi
+      ;;
+  esac
+done < <(git diff --cached --name-only --diff-filter=ACMR -z)
+
+if (( ${#staged_notebooks[@]} == 0 )); then
+  exit 0
+fi
+
+info "sanitizing staged notebooks (${#staged_notebooks[@]}) with: $NB_CLEAN_CMD"
+
+# Clean + re-stage only staged notebooks.
+for nb in "${staged_notebooks[@]}"; do
+  if [[ -e "$nb" ]]; then
+    # Use eval so NB_CLEAN_CMD can be "uvx nb-clean" / "pipx run nb-clean"
+    eval "$NB_CLEAN_CMD" clean -- "$nb" || die "nb-clean clean failed for: $nb"
+    git add -- "$nb"
+  else
+    # If a path disappeared between staging and hook run, keep index consistent.
+    git add --update -- "$nb" >/dev/null 2>&1 || true
+  fi
+done
+
+info "verifying staged notebooks are clean..."
+
+for nb in "${staged_notebooks[@]}"; do
+  if [[ -e "$nb" ]]; then
+    eval "$NB_CLEAN_CMD" check -- "$nb" || die "nb-clean check failed for: $nb"
+  fi
+done
+
+exit 0

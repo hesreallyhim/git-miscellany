@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# Pre-push hook to ensure Jupyter notebooks are clean before publishing.
+#
+# - Runs nb-clean check on NOTEBOOK_PATH (default: "notebooks")
+# - Blocks non-interactive pushes if notebooks are dirty
+# - Allows interactive override with confirmation
+# - Set SKIP_NOTEBOOK_PREPUSH=1 to bypass for a single push
+#
+# Requirements:
+#   - nb-clean available via uvx, pipx, or on PATH
+
+set -euo pipefail
+
+NOTEBOOK_PATH="${NOTEBOOK_PATH:-notebooks}"
+
+if [[ "${SKIP_NOTEBOOK_PREPUSH:-}" == "1" ]]; then
+  exit 0
+fi
+
+die() {
+  echo "pre-push: $*" >&2
+  exit 1
+}
+
+info() {
+  echo "pre-push: $*"
+}
+
+run_nb_clean() {
+  if command -v uvx >/dev/null 2>&1; then
+    uvx nb-clean "$@"
+  elif command -v pipx >/dev/null 2>&1; then
+    pipx run nb-clean "$@"
+  elif command -v nb-clean >/dev/null 2>&1; then
+    nb-clean "$@"
+  else
+    echo "pre-push: nb-clean is not available. Install uv (recommended) or pipx." >&2
+    return 127
+  fi
+}
+
+info "running nb-clean check on '${NOTEBOOK_PATH}'..."
+
+set +e
+run_nb_clean check "${NOTEBOOK_PATH}"
+rc=$?
+set -e
+
+if [[ $rc -eq 0 ]]; then
+  exit 0
+elif [[ $rc -eq 127 ]]; then
+  exit 127
+fi
+
+echo "pre-push: nb-clean detected notebooks that still contain metadata or outputs." >&2
+
+# Prefer prompting via the controlling terminal.
+if [[ -r /dev/tty && -w /dev/tty ]]; then
+  read -r -p "Proceed with git push anyway? [y/N] " answer </dev/tty
+else
+  die "non-interactive push aborted to keep notebooks clean."
+fi
+
+case "${answer:-}" in
+  [yY]|[yY][eE][sS])
+    echo "pre-push: continuing with push despite nb-clean warnings." >&2
+    ;;
+  *)
+    die "push aborted. Run: nb-clean clean '${NOTEBOOK_PATH}' and try again."
+    ;;
+esac
